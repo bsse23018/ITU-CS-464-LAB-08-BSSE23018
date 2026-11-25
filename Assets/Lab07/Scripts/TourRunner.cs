@@ -158,7 +158,8 @@ namespace Lab07
         // ------------------------------------------------------------------ video tour
         IEnumerator Tap(string key, float after = 1f)
         {
-            if (!Tappable.All.TryGetValue(key, out var t) || !t || !t.gameObject.activeInHierarchy) { Debug.LogError("Tour could not find " + key); yield break; }
+            Tappable t = Array.Find(nav.Current.Root.GetComponentsInChildren<Tappable>(), button => button.key == key);
+            if (!t) { Debug.LogError("Tour could not find " + key); yield break; }
             Ripple(t.rectTransform); yield return Wait(.45f); t.Click(); yield return Wait(after);
         }
 
