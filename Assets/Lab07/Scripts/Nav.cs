@@ -94,6 +94,7 @@ namespace Lab07
         public void Back()
         {
             if (Busy || Stack.Count <= 1) return;
+            GameAudio.UI(UiCue.Close);
             var cur = Current; var t = enter[enter.Count - 1];
             Stack.RemoveAt(Stack.Count - 1); enter.RemoveAt(enter.Count - 1);
             Run(cur, Current, t, false, false);
@@ -103,6 +104,20 @@ namespace Lab07
         public void GoRoot(Scr id, Trans t = Trans.Fade)
         {
             if (Busy) return; var next = Get(id); var cur = Current; var title = Get(Scr.Title);
+            if (next == cur) return;
+            foreach (var screen in screens.Values)
+            {
+                if (screen == cur || screen == next || !screen.Root.gameObject.activeSelf) continue;
+                screen.Root.gameObject.SetActive(false);
+                screen.OnHide();
+            }
+            if (id == Scr.Main)
+            {
+                Time.timeScale = 1f;
+                AudioListener.pause = false;
+                App.I.flight.ReturnToMenu();
+                GameAudio.Instance.Music(false);
+            }
             Stack.Clear(); enter.Clear(); if (id != Scr.Title) { Stack.Add(title); enter.Add(Trans.Fade); }
             Stack.Add(next); enter.Add(t);
             Run(cur, next, t, true, true);
@@ -119,13 +134,19 @@ namespace Lab07
 
         void Run(MenuScreen outS, MenuScreen inS, Trans t, bool forward, bool replace)
         {
-            Busy = true; Blocker.gameObject.SetActive(true);
+            Busy = true;
+            Overlay.SetAsLastSibling();
+            Blocker.transform.SetAsLastSibling();
+            Blocker.gameObject.SetActive(true);
+            if (forward && (inS.Id == Scr.Pause || inS.Id == Scr.Settings || inS.Id == Scr.Shop || inS.Id == Scr.Loadout || inS.Id == Scr.Credits))
+                GameAudio.UI(UiCue.Open);
             float W = Mathf.Max(1080f, Safe.rect.width);
             float dur = t == Trans.Slide ? .4f : t == Trans.Modal ? .38f : .42f;
 
             // z-order: forward -> entering screen on top; backward -> leaving screen on top
             inS.Root.gameObject.SetActive(true); inS.Root.anchoredPosition = Vector2.zero;
             if (forward) inS.Root.SetAsLastSibling(); else { inS.Root.SetAsLastSibling(); outS.Root.SetAsLastSibling(); }
+            Overlay.SetAsLastSibling();
             if (inS.Modal && !forward) { }
 
             Action finish = () =>
@@ -193,6 +214,7 @@ namespace Lab07
 
         public void Toast(string msg, bool good = true)
         {
+            GameAudio.UI(good ? UiCue.Success : UiCue.Error);
             toast.gameObject.SetActive(true); toast.SetAsLastSibling();
             toastText.text = msg; toastBg.color = good ? Pal.Cyan : Pal.Pink; toastIcon.sprite = Sprites.Icon(good ? "check" : "close");
             Tw.Kill((toast, "pos")); Tw.Kill((toast, "hide"));

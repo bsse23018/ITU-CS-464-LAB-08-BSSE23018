@@ -101,7 +101,7 @@ namespace Lab07
     }
 
     /// <summary>Touch control with press/release feedback, disabled state and a deny shake.</summary>
-    public class Tappable : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerClickHandler, IPointerExitHandler
+    public class Tappable : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerClickHandler, IPointerExitHandler, IPointerEnterHandler, ISelectHandler, ISubmitHandler
     {
         public static readonly Dictionary<string, Tappable> All = new Dictionary<string, Tappable>();
         public string key; public Action onClick; public Action onDenied; public Image bg, ring, icon; public TextMeshProUGUI label;
@@ -121,17 +121,31 @@ namespace Lab07
         public void SetFill(Color f) { fill = f; if (interactable && bg) bg.color = f; }
         public void SetLabel(string s) { if (label) label.text = s; }
 
+        public void OnPointerEnter(PointerEventData e)
+        {
+            if (interactable && Input.touchCount == 0) GameAudio.UI(UiCue.Select);
+        }
+
+        public void OnSelect(BaseEventData e)
+        {
+            if (interactable) GameAudio.UI(UiCue.Select);
+        }
+
+        public void OnSubmit(BaseEventData e) => Click();
         public void OnPointerDown(PointerEventData e) { if (!interactable) return; Tw.Scale(transform, .94f, .08f, Ease.OutQuad); }
         public void OnPointerExit(PointerEventData e) { Tw.Scale(transform, 1f, .18f, Ease.OutBack); }
         public void OnPointerUp(PointerEventData e) { Tw.Scale(transform, 1f, .28f, Ease.OutBack); }
-        public void OnPointerClick(PointerEventData e) { Click(); }
+        public void OnPointerClick(PointerEventData e) { if (e.button == PointerEventData.InputButton.Left) Click(); }
 
         public void Click()
         {
+            if (App.I.flight.Loading || App.I.nav.Busy) return;
             if (!interactable)
             {
+                if (onDenied == null) GameAudio.UI(UiCue.Error);
                 Tw.Shake(rectTransform); onDenied?.Invoke(); return;
             }
+            GameAudio.UI(key == "back" ? UiCue.Back : UiCue.Press);
             onClick?.Invoke();
         }
     }
@@ -190,7 +204,7 @@ namespace Lab07
         }
         public void OnPointerDown(PointerEventData e) { FromEvent(e); Tw.Scale(knob, 1.25f, .15f, Ease.OutBack); }
         public void OnDrag(PointerEventData e) { FromEvent(e); }
-        public void OnPointerUp(PointerEventData e) { Tw.Scale(knob, 1f, .2f, Ease.OutBack); }
+        public void OnPointerUp(PointerEventData e) { Tw.Scale(knob, 1f, .2f, Ease.OutBack); PlayerPrefs.Save(); }
     }
 
     /// <summary>ON/OFF switch: knob slides (OutCubic) and the track changes value, plus an ON/OFF word so state never relies on colour alone.</summary>

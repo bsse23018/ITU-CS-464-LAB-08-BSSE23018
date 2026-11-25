@@ -84,9 +84,26 @@ namespace Lab07
             Fire();
         }
 
+        public static void RecordBestScore(int score)
+        {
+            if (score > BestScore) Set("l7_best", score);
+        }
+
         public static void ResetAll()
         {
-            PlayerPrefs.DeleteAll(); Coins = 1250; Fire();
+            for (int level = 1; level <= Levels; level++)
+            {
+                PlayerPrefs.DeleteKey("l7_stars_" + level);
+                PlayerPrefs.DeleteKey("l7_lbest_" + level);
+            }
+            foreach (var ship in Ships) PlayerPrefs.DeleteKey("l7_own_" + ship.id);
+            foreach (var item in ShopItems) PlayerPrefs.DeleteKey("l7_own_" + item.id);
+            foreach (var boost in Boosts) PlayerPrefs.DeleteKey("l7_cnt_" + boost.id);
+            foreach (string key in new[] { "coins", "best", "xp", "sens", "shake", "q", "ship", "boost", "cnt_life" })
+                PlayerPrefs.DeleteKey("l7_" + key);
+            Coins = 1250;
+            PlayerPrefs.Save();
+            Fire();
         }
 
         // ---------------- session (what the player picked in the menus)

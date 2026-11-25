@@ -34,7 +34,7 @@ namespace Lab07.EditorTools
             Log("command: " + cmd);
             if (cmd == "makescene") MakeScene();
             else if (cmd == "shots") Run("shots");
-            else if (cmd == "video") Run("video");
+            else if (cmd == "video" || cmd == "restart-video") Run(cmd);
             else if (cmd == "stop") EditorApplication.isPlaying = false;
             else if (cmd == "ping") Log("pong playing=" + EditorApplication.isPlaying + " paused=" + EditorApplication.isPaused + " focused=" + UnityEditorInternal.InternalEditorUtility.isApplicationActive);
             else if (cmd == "checkandroid")
@@ -56,14 +56,17 @@ namespace Lab07.EditorTools
             var sc = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             var go = new GameObject("App"); go.AddComponent<App>();
             EditorSceneManager.SaveScene(sc, ScenePath);
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+            EditorBuildSettings.scenes = new[] {
+                new EditorBuildSettingsScene(ScenePath, true),
+                new EditorBuildSettingsScene("Assets/Lab07/Scenes/Flight.unity", true)
+            };
             PlayerSettings.productName = "Nova Rush";
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             AssetDatabase.SaveAssets(); Log("scene created");
         }
 
         [MenuItem("Lab07/Capture Screenshots")] static void Shots() { Run("shots"); }
-        [MenuItem("Lab07/Record Demo Frames")] static void Video() { Run("video"); }
+        [MenuItem("Lab08/Record Demo Frames")] static void Video() { Run("video"); }
 
         [MenuItem("Lab07/Build Android APK")]
         public static void BuildApk()
@@ -81,7 +84,7 @@ namespace Lab07.EditorTools
             PlayerSettings.defaultInterfaceOrientation = UIOrientation.Portrait;
             BuildPlayerOptions opt = new BuildPlayerOptions
             {
-                scenes = new[] { ScenePath },
+                scenes = System.Array.ConvertAll(System.Array.FindAll(EditorBuildSettings.scenes, scene => scene.enabled), scene => scene.path),
                 locationPathName = outPath,
                 target = BuildTarget.Android,
                 options = BuildOptions.None

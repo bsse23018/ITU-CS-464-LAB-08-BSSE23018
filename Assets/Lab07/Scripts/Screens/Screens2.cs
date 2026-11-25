@@ -224,19 +224,30 @@ namespace Lab07
     public class SettingsScreen : MenuScreen
     {
         readonly List<RectTransform> sections = new List<RectTransform>(); Tappable reset; float resetArm; UToggle shakeT; USlider sens; USegment qual;
+        readonly USlider[] volume = new USlider[4];
 
         public override void Build()
         {
             UI.Header(this, "SETTINGS", true, false);
             // ---- audio
-            var a = Section("AUDIO", -200, 4);
+            var a = Section("AUDIO", -200, 4, 120);
+            string[] labels = { "Master", "Music", "SFX", "UI" };
+            string[] icons = { "bars", "sparkle", "bolt", "gear" };
+            for (int i = 0; i < volume.Length; i++)
+            {
+                AudioBus bus = (AudioBus)i;
+                Row(a, i, icons[i], labels[i], 120);
+                volume[i] = USlider.Create(a, "settings.volume." + labels[i], UI.TR,
+                    new Vector2(-150, Cy(i, 120) + 60), 330, GameAudio.Volume(bus),
+                    v => GameAudio.Instance.SetVolume(bus, v), ValueLabel(a, i, 120));
+            }
             // ---- gameplay
-            var g = Section("GAMEPLAY", -200, 3);
-            Row(g, 0, "bars", "Sensitivity"); sens = USlider.Create(g, "settings.sens", UI.TR, new Vector2(-150, Cy(0) + 60), 330, GS.Sensitivity, v => GS.Sensitivity = v, ValueLabel(g, 0));
-            Row(g, 1, "bolt", "Screen shake"); shakeT = UToggle.Create(g, "settings.shake", UI.TR, new Vector2(-30, Cy(1) + 50), GS.Shake, v => GS.Shake = v);
-            Row(g, 2, "gear", "Graphics"); qual = USegment.Create(g, "settings.quality", UI.TR, new Vector2(-30, Cy(2) + 48), new Vector2(470, 96), new[] { "Low", "Med", "High" }, GS.Quality, i => GS.Quality = i, 38);
+            var g = Section("GAMEPLAY", -836, 3, 120);
+            Row(g, 0, "bars", "Sensitivity", 120); sens = USlider.Create(g, "settings.sens", UI.TR, new Vector2(-150, Cy(0) + 60), 330, GS.Sensitivity, v => GS.Sensitivity = v, ValueLabel(g, 0));
+            Row(g, 1, "bolt", "Screen shake", 120); shakeT = UToggle.Create(g, "settings.shake", UI.TR, new Vector2(-30, Cy(1, 120) + 50), GS.Shake, v => GS.Shake = v);
+            Row(g, 2, "gear", "Graphics", 120); qual = USegment.Create(g, "settings.quality", UI.TR, new Vector2(-30, Cy(2, 120) + 48), new Vector2(470, 96), new[] { "Low", "Med", "High" }, GS.Quality, i => GS.Quality = i, 38);
             // ---- data
-            float y3 = -780;
+            float y3 = -1352;
             var d = UI.Rounded(Root, "section_data", UI.TC, new Vector2(0, y3), new Vector2(960, 330), Pal.Panel, 48); UI.Outline(d.transform, "ring", new Vector2(960, 330), Pal.Mute, 48, 3); sections.Add(d.rectTransform);
             reset = UI.Button(d.transform, "settings.reset", UI.TC, new Vector2(0, -36), new Vector2(880, 120), new Color(0, 0, 0, 0), Pal.Pink, "RESET PROGRESS", 44, "restart", Pal.Pink);
             reset.onClick = OnReset; Mark("reset", reset.rectTransform);
@@ -245,19 +256,19 @@ namespace Lab07
             Mark("audio", a); Mark("gameplay", g);
         }
 
-        static float Cy(int i) => -130 - 140 * i;
-        TextMeshProUGUI ValueLabel(RectTransform card, int row) => UI.Text(card, "val" + row, "", 38, Pal.White, UI.TR, new Vector2(-24, Cy(row) + 30), new Vector2(120, 60), TextAlignmentOptions.MidlineRight);
+        static float Cy(int i, int step = 140) => -130 - step * i;
+        TextMeshProUGUI ValueLabel(RectTransform card, int row, int step = 140) => UI.Text(card, "val" + row, "", 38, Pal.White, UI.TR, new Vector2(-24, Cy(row, step) + 30), new Vector2(120, 60), TextAlignmentOptions.MidlineRight);
 
-        RectTransform Section(string title, float y, int rows)
+        RectTransform Section(string title, float y, int rows, int step)
         {
-            float h = rows * 140 + 130; var card = UI.Rounded(Root, "section_" + title, UI.TC, new Vector2(0, y), new Vector2(960, h), Pal.Panel, 48); UI.Outline(card.transform, "ring", new Vector2(960, h), Pal.Mute, 48, 3);
+            float h = rows * step + 130; var card = UI.Rounded(Root, "section_" + title, UI.TC, new Vector2(0, y), new Vector2(960, h), Pal.Panel, 48); UI.Outline(card.transform, "ring", new Vector2(960, h), Pal.Mute, 48, 3);
             UI.Text(card.transform, "title", title, 34, Pal.Amber, UI.TL, new Vector2(40, -26), new Vector2(500, 50), TextAlignmentOptions.MidlineLeft, true, 6);
             sections.Add(card.rectTransform); return card.rectTransform;
         }
 
-        void Row(RectTransform card, int i, string icon, string label)
+        void Row(RectTransform card, int i, string icon, string label, int step)
         {
-            float c = Cy(i);
+            float c = Cy(i, step);
             UI.Icon(card, "i" + i, icon, UI.TL, new Vector2(40, c + 28), 56, Pal.Dim);
             UI.Text(card, "l" + i, label, 42, Pal.White, UI.TL, new Vector2(116, c + 35), new Vector2(360, 70), TextAlignmentOptions.MidlineLeft, false);
         }
@@ -276,8 +287,11 @@ namespace Lab07
         public override void OnShow(bool returning)
         {
             sens.Set(GS.Sensitivity, false);
+            for (int i = 0; i < volume.Length; i++) volume[i].Set(GameAudio.Volume((AudioBus)i), false);
             if (returning) return;
             for (int i = 0; i < sections.Count; i++) Intro.Rise(sections[i], i, 70, .1f, .5f);
         }
+
+        public override void OnHide() => PlayerPrefs.Save();
     }
 }

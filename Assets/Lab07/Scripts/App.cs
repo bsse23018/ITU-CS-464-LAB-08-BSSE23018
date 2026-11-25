@@ -13,6 +13,7 @@ namespace Lab07
     public class App : MonoBehaviour
     {
         public static App I { get; private set; }
+        public FlightFlow flight;
         public Nav nav; public Camera cam; public Canvas canvas; public RectTransform safe, overlay, bgRoot;
         readonly List<RectTransform> stars = new List<RectTransform>(); readonly List<float> starSpeed = new List<float>();
 
@@ -26,6 +27,8 @@ namespace Lab07
             // camera
             cam = FindFirstObjectByType<Camera>();
             if (!cam) cam = new GameObject("UI Camera", typeof(Camera)).GetComponent<Camera>();
+            if (!cam.GetComponent<AudioListener>()) cam.gameObject.AddComponent<AudioListener>();
+            gameObject.AddComponent<GameAudio>();
             cam.clearFlags = CameraClearFlags.SolidColor; cam.backgroundColor = Pal.BgBottom; cam.orthographic = true; cam.cullingMask = 1 << 5; cam.transform.position = new Vector3(0, 0, -10);
 
             // canvas
@@ -41,6 +44,8 @@ namespace Lab07
             safe = UI.Stretch(UI.Rect(cgo.transform, "SafeArea")); safe.gameObject.AddComponent<SafeArea>();
             overlay = UI.Stretch(UI.Rect(safe, "Overlay"));
             nav = new Nav(safe, overlay);
+            flight = gameObject.AddComponent<FlightFlow>();
+            flight.Initialize(this);
         }
 
         void Start()
@@ -70,8 +75,9 @@ namespace Lab07
             {
                 var p = stars[i].anchoredPosition; p.y -= starSpeed[i] * dt; if (p.y < -20) p.y = bgRoot.rect.height + 20; stars[i].anchoredPosition = p;
             }
-            if (Input.GetKeyDown(KeyCode.Escape) && !nav.Busy && nav.Current != null) nav.Current.OnBackKey(); // Android back button
-            (nav.Peek(Scr.Hud) as HudScreen)?.Tick(Time.deltaTime);
+            if (Input.GetKeyDown(KeyCode.Escape) && !flight.Loading && !nav.Busy && nav.Current != null) nav.Current.OnBackKey(); // Android back button
+            if (!flight.Loading && !nav.Busy && nav.Current?.Id == Scr.Hud)
+                (nav.Current as HudScreen)?.Tick(Time.deltaTime);
         }
     }
 }
