@@ -172,7 +172,7 @@ namespace Lab07
                 if (!unlocked) { return; }
                 selected = idx;
                 if (idx == 0) nav.Push(Scr.Level);
-                else { GS.Session.Mode = idx; GS.Session.Level = 1; nav.Push(Scr.Hud, Trans.Fade); }
+                else { GS.Session.Mode = idx; GS.Session.Level = 1; App.I.flight.Begin(); }
             };
             if (!unlocked) { t.SetInteractable(false, Pal.PanelLo); t.onDenied = () => nav.Toast("Daily Challenge unlocks at Lv 10", false); t.bg.color = Pal.PanelLo; }
             cards.Add(t.rectTransform);
@@ -219,7 +219,7 @@ namespace Lab07
             infoName = UI.Text(info, "name", "", 54, Pal.White, UI.TL, new Vector2(40, -40), new Vector2(520, 130), TextAlignmentOptions.TopLeft);
             infoSub = UI.Text(info, "sub", "", 38, Pal.Dim, UI.BL, new Vector2(40, 40), new Vector2(520, 90), TextAlignmentOptions.BottomLeft, false);
             start = UI.Button(info, "level.start", UI.MR, new Vector2(-36, 0), new Vector2(340, 210), Pal.Cyan, Pal.Ink, "START", 52, "play", null, 60);
-            start.onClick = () => { GS.Session.Mode = 0; GS.Session.Level = sel; nav.Push(Scr.Hud, Trans.Fade); };
+            start.onClick = () => { GS.Session.Mode = 0; GS.Session.Level = sel; App.I.flight.Begin(); };
             start.onDenied = () => nav.Toast("Clear the previous level to unlock", false);
             Mark("info", info); Mark("start", start.rectTransform);
         }

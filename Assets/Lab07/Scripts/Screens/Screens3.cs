@@ -15,14 +15,25 @@ namespace Lab07
         public void OnDrag(PointerEventData e) { onPointer?.Invoke(e); }
     }
 
-    // =====================================================================  GAMEPLAY HUD (small playable stub so the flow is real)
+    // =====================================================================  GAMEPLAY HUD
     public class HudScreen : MenuScreen
     {
-        class Fall { public RectTransform rt; public bool coin; public bool dead; }
-        public static bool AutoPlay; public static float DurationOverride;
-        RectTransform field, ship, fillRt, shipHolder; Image shipImg, flash, shield; TextMeshProUGUI scoreT, levelT, countT, boostT; Image[] hearts = new Image[3];
-        readonly List<Fall> objs = new List<Fall>(); Tappable pauseBtn;
-        bool running, counting; float spawnT, timeLeft, duration, targetX, shipX; int score, coinsGot, lives, spawned, caught, mult; string boost; bool shieldOn, magnet; public int Score => score; public int CoinsGot => coinsGot;
+        class Fall { public RectTransform rt; public bool coin; }
+        public static bool AutoPlay;
+        public static float DurationOverride;
+
+        RectTransform field, ship, fillRt, shipHolder;
+        Image shipImg, flash, shield;
+        TextMeshProUGUI scoreT, levelT, countT, boostT;
+        readonly Image[] hearts = new Image[3];
+        readonly List<Fall> objs = new List<Fall>();
+        FlightSession session;
+        GameObject feedback;
+        Tappable pauseBtn;
+        float spawnT, targetX, shipX, countdown;
+        int lastCount;
+        public int Score => session ? session.Score : 0;
+        public int CoinsGot => session ? session.Coins : 0;
 
         public override void Build()
         {
@@ -51,60 +62,112 @@ namespace Lab07
             Modal = false;
         }
 
-        public void Pause() { if (!running && !counting) return; nav.Push(Scr.Pause); }
-        public override void OnBackKey() { Pause(); }
+        public void Pause()
+        {
+            if (session && (session.Running || countdown > 0)) nav.Push(Scr.Pause);
+        }
+
+        public override void OnBackKey() => Pause();
 
         public override void OnShow(bool returning)
         {
             if (returning) return;
-            StartRun();
-        }
-        public override void OnHide() { Time.timeScale = 1f; }
-
-        public void Restart() { StartRun(); }
-
-        void StartRun()
-        {
-            foreach (var o in objs) if (o.rt) UnityEngine.Object.Destroy(o.rt.gameObject); objs.Clear();
-            var s = GS.Ships[GS.ShipIndex]; shipImg.sprite = Sprites.Icon(s.icon); shipImg.color = s.color;
-            int lv = GS.Session.Level; duration = DurationOverride > 0 ? DurationOverride : GS.Session.Mode == 0 ? 25f : GS.Session.Mode == 2 ? 45f : 0f; timeLeft = duration;
-            score = coinsGot = spawned = caught = 0; lives = 3 + (GS.BoostCount("life") > 0 ? 0 : 0); mult = 1; targetX = shipX = 0; spawnT = 0; shieldOn = false; magnet = false;
-            var b = GS.Boosts[GS.BoostIndex]; boost = b.id;
-            if (GS.BoostCount(boost) > 0) { GS.AddBoost(boost, -1); shieldOn = boost == "shield"; magnet = boost == "magnet"; mult = boost == "x2" ? 2 : 1; boostT.text = b.name.ToUpper() + " ON"; } else boostT.text = "";
-            shield.gameObject.SetActive(shieldOn);
-            for (int i = 0; i < 3; i++) { hearts[i].sprite = Sprites.Icon("heart"); hearts[i].color = Pal.Pink; }
-            scoreT.text = "0"; levelT.text = GS.Session.Title; fillRt.sizeDelta = new Vector2(820, 26); fillRt.parent.gameObject.SetActive(duration > 0);
-            ship.anchoredPosition = new Vector2(0, 330); running = false; counting = true; Time.timeScale = 1f;
-            // HUD slides in: top bar from above, ship from below, so the player reads the layout before play starts
-            Tw.MoveFrom(ship, new Vector2(0, -200), .6f, Ease.OutCubic);
-            StartCoroutineLike();
-        }
-
-        void StartCoroutineLike()
-        {
-            string[] seq = { "3", "2", "1", "GO!" }; float step = AutoPlay ? .32f : .55f;
-            for (int i = 0; i < seq.Length; i++)
+            foreach (var item in objs)
+                if (item.rt) UnityEngine.Object.Destroy(item.rt.gameObject);
+            objs.Clear();
+            if (feedback)
             {
-                int n = i; Tw.To(k => { }, .01f, Ease.Linear, .2f + n * step, () =>
-                {
-                    countT.gameObject.SetActive(true); countT.text = seq[n]; countT.color = n == 3 ? Pal.Cyan : Pal.White;                     Tw.ScaleFrom(countT.transform, n == 3 ? .5f : 1.5f, 1f, step * .9f, Ease.OutBack); Tw.AlphaFrom(UI.Group(countT.rectTransform), 0, 1, .12f);
-                    if (n == 3) Tw.Alpha(UI.Group(countT.rectTransform), 0, .3f, Ease.InQuad, .3f, () => countT.gameObject.SetActive(false));
-                    if (n == 3) { counting = false; running = true; }
-                }, (this, "cd" + n));
+                feedback.SetActive(false);
+                UnityEngine.Object.Destroy(feedback);
             }
+            if (session != null) session.Finished -= OnFinished;
+            session = App.I.flight.Session;
+            if (!session) return;
+
+            AttachFeedback();
+            session.Finished += OnFinished;
+            session.Prepare(DurationOverride);
+            var equipped = GS.Ships[GS.ShipIndex];
+            shipImg.sprite = Sprites.Icon(equipped.icon);
+            shipImg.color = equipped.color;
+            shield.gameObject.SetActive(session.Shield);
+            boostT.text = session.BoostLabel;
+            foreach (var heart in hearts) heart.color = Pal.Pink;
+            scoreT.text = "0";
+            levelT.text = GS.Session.Title;
+            fillRt.sizeDelta = new Vector2(820, 26);
+            fillRt.parent.gameObject.SetActive(session.Duration > 0);
+            targetX = shipX = 0;
+            spawnT = .18f;
+            ship.anchoredPosition = new Vector2(0, 330);
+            Tw.MoveFrom(ship, new Vector2(0, -200), .6f, Ease.OutCubic);
+            countdown = AutoPlay ? 1.2f : 2.7f;
+            lastCount = 0;
+        }
+
+        void AttachFeedback()
+        {
+            feedback = new GameObject("Flight feedback");
+            feedback.SetActive(false);
+            feedback.transform.SetParent(Root, false);
+            var hud = feedback.AddComponent<FlightHudFeedback>();
+            hud.session = session;
+            hud.score = scoreT;
+            hud.boost = boostT;
+            hud.hearts = hearts;
+            hud.shield = shield;
+
+            feedback.AddComponent<FlightAudioFeedback>().session = session;
+            var visuals = feedback.AddComponent<FlightVisualFeedback>();
+            visuals.session = session;
+            visuals.field = field;
+            visuals.ship = ship;
+            visuals.flash = flash;
+            feedback.SetActive(true);
+        }
+
+        void OnFinished(bool won) => nav.Replace(Scr.Results);
+
+        void UpdateCountdown(float dt)
+        {
+            countdown -= dt;
+            int count = Mathf.Clamp(Mathf.CeilToInt(countdown / (AutoPlay ? .4f : .9f)), 0, 3);
+            if (count == lastCount) return;
+            lastCount = count;
+            countT.gameObject.SetActive(true);
+            countT.text = count > 0 ? count.ToString() : "GO!";
+            countT.color = count > 0 ? Pal.White : Pal.Cyan;
+            Tw.ScaleFrom(countT.transform, count > 0 ? 1.5f : .5f, 1f, .32f, Ease.OutBack);
+            Tw.AlphaFrom(UI.Group(countT.rectTransform), 0, 1, .12f);
+            if (count > 0) return;
+            Tw.Alpha(UI.Group(countT.rectTransform), 0, .3f, Ease.InQuad, .28f, () => countT.gameObject.SetActive(false));
+            session.Launch();
         }
 
         public void Tick(float dt)
         {
-            if (!running || dt <= 0) return;
-            if (duration > 0) { timeLeft -= dt; fillRt.sizeDelta = new Vector2(Mathf.Max(26, 820f * Mathf.Clamp01(timeLeft / duration)), 26); if (timeLeft <= 0) { End(true); return; } }
+            if (!session || dt <= 0) return;
+            if (countdown > 0)
+            {
+                UpdateCountdown(dt);
+                return;
+            }
+
+            if (!session.Running) return;
+            session.Advance(dt);
+            if (session.Duration > 0)
+                fillRt.sizeDelta = new Vector2(Mathf.Max(26, 820f * session.Remaining / session.Duration), 26);
+            if (!session.Running) return;
+            float keyboard = Input.GetAxisRaw("Horizontal");
+            targetX = Mathf.Clamp(targetX + keyboard * 650f * dt, -460f, 460f);
             int lv = GS.Session.Level; float speed = 560f + lv * 45f; spawnT -= dt;
             if (spawnT <= 0)
             {
                 spawnT = Mathf.Max(.32f, .62f - lv * .02f); bool coin = UnityEngine.Random.value < .62f;
                 var im = UI.Icon(field, coin ? "coin" : "rock", coin ? "coin" : "rock", UI.TC, new Vector2(UnityEngine.Random.Range(-440f, 440f), 120), coin ? 96 : 118, coin ? Pal.Amber : Pal.Pink);
                 if (!coin) im.rectTransform.localEulerAngles = new Vector3(0, 0, UnityEngine.Random.Range(0, 360));
-                objs.Add(new Fall { rt = im.rectTransform, coin = coin }); spawned++;
+                objs.Add(new Fall { rt = im.rectTransform, coin = coin });
+                if (coin) session.OfferCoin();
             }
             if (AutoPlay) AutoSteer();
             float follow = Mathf.Lerp(6f, 18f, GS.Sensitivity);
@@ -113,10 +176,18 @@ namespace Lab07
             for (int i = objs.Count - 1; i >= 0; i--)
             {
                 var o = objs[i]; var p = o.rt.anchoredPosition; p.y -= speed * dt;
-                if (o.coin && magnet) { float dx = shipX - p.x, dy = shipY - p.y; if (new Vector2(dx, dy).magnitude < 420) { p.x += dx * dt * 6f; p.y += dy * dt * 3f; } }
+                if (o.coin && session.Magnet) { float dx = shipX - p.x, dy = shipY - p.y; if (new Vector2(dx, dy).magnitude < 420) { p.x += dx * dt * 6f; p.y += dy * dt * 3f; } }
                 o.rt.anchoredPosition = p; if (!o.coin) o.rt.Rotate(0, 0, 90 * dt);
                 bool hit = Mathf.Abs(p.x - shipX) < 100 && Mathf.Abs(p.y - shipY) < 100;
-                if (hit) { if (o.coin) Collect(); else Hit(); UnityEngine.Object.Destroy(o.rt.gameObject); objs.RemoveAt(i); continue; }
+                if (hit)
+                {
+                    if (o.coin) session.Collect(p);
+                    else session.Hit(p);
+                    UnityEngine.Object.Destroy(o.rt.gameObject);
+                    objs.RemoveAt(i);
+                    if (!session.Running) break;
+                    continue;
+                }
                 if (p.y < -fh - 120) { UnityEngine.Object.Destroy(o.rt.gameObject); objs.RemoveAt(i); }
             }
         }
@@ -124,7 +195,7 @@ namespace Lab07
         void AutoSteer()
         {
             float fh = field.rect.height; float shipY = -(fh - 330 - 85); float best = 99999; float tx = 0; bool found = false;
-            foreach (var o in objs) { if (!o.coin) continue; var p = o.rt.anchoredPosition; float d = p.y - shipY; if (d < -60) continue; if (-d < best && true) { } if (Mathf.Abs(d) < best) { best = Mathf.Abs(d); tx = p.x; found = true; } }
+            foreach (var o in objs) { if (!o.coin) continue; var p = o.rt.anchoredPosition; float d = p.y - shipY; if (d < -60) continue; if (Mathf.Abs(d) < best) { best = Mathf.Abs(d); tx = p.x; found = true; } }
             if (!found) tx = Mathf.Sin(Time.time * .8f) * 300f;
             foreach (var o in objs)
             {
@@ -134,33 +205,6 @@ namespace Lab07
             targetX = Mathf.Clamp(tx, -440, 440);
         }
 
-        void Collect()
-        {
-            coinsGot++; caught++; score += 100 * mult; scoreT.text = score.ToString("N0");             Tw.ScaleFrom(scoreT.transform, 1.18f, 1f, .3f, Ease.OutBack);
-        }
-
-        void Hit()
-        {
-            if (shieldOn) { shieldOn = false; shield.gameObject.SetActive(false); Tw.ScaleFrom(shipHolder, 1.2f, 1f, .3f, Ease.OutBack); boostT.text = ""; return; }
-            lives--;             if (lives >= 0 && lives < 3) { hearts[lives].sprite = Sprites.Icon("heart"); hearts[lives].color = Pal.Mute; Tw.ScaleFrom(hearts[lives].transform, 1.5f, 1f, .4f, Ease.OutBack); }
-            Tw.To(k => flash.color = Pal.A(Pal.Pink, .4f * (1 - k)), .35f, Ease.OutQuad); if (GS.Shake) Tw.Shake(field, 16, .3f);
-            if (lives <= 0) End(false);
-        }
-
-        void End(bool timeUp)
-        {
-            if (!running) return; running = false; Time.timeScale = 1f;
-            bool win = lives > 0; if (GS.Session.Mode == 1) win = true;
-            int stars = GS.Session.Mode == 0 ? (win ? Mathf.Clamp(lives, 1, 3) : 0) : (win ? (score > 1800 ? 3 : score > 900 ? 2 : 1) : 0);
-            GS.Session.Win = win; GS.Session.Score = score; GS.Session.CoinsEarned = coinsGot; GS.Session.Stars = stars;
-            GS.Session.Accuracy = spawned > 0 ? Mathf.Clamp01(caught / Mathf.Max(1f, spawned * .62f)) : 0;
-            GS.Session.NewBest = score > GS.BestScore;
-            if (GS.Session.Mode == 0 && win) GS.Submit(GS.Session.Level, stars, score); else if (score > GS.BestScore) GS.Submit(GS.Session.Level, 0, score);
-            GS.AddCoins(coinsGot); GS.AddXp(Mathf.Max(5, score / 100));
-            nav.Replace(Scr.Results, Trans.Fade);
-        }
-
-        public void ForceEnd(bool win) { running = true; if (!win) lives = 0; else lives = Mathf.Max(lives, 2); End(true); }
     }
 
     // =====================================================================  8. PAUSE (modal)
@@ -185,7 +229,7 @@ namespace Lab07
 
             resume = UI.Button(card, "pause.resume", UI.TC, new Vector2(0, -420), new Vector2(720, 170), Pal.Cyan, Pal.Ink, "RESUME", 64, "play"); resume.onClick = () => nav.Back(); Mark("resume", resume.rectTransform);
             restart = UI.Button(card, "pause.restart", UI.TC, new Vector2(0, -620), new Vector2(720, 140), Pal.PanelHi, Pal.White, "RESTART", 50, "restart", Pal.Mute);
-            restart.onClick = () => { nav.Back(); Tw.To(k => { }, .01f, Ease.Linear, .45f, () => nav.Get<HudScreen>(Scr.Hud).Restart()); };
+            restart.onClick = () => App.I.flight.Begin(fromPause: true);
             settings = UI.Button(card, "pause.settings", UI.TC, new Vector2(0, -790), new Vector2(720, 140), Pal.PanelHi, Pal.White, "SETTINGS", 50, "gear", Pal.Mute); settings.onClick = () => nav.Push(Scr.Settings);
             quit = UI.Button(card, "pause.quit", UI.TC, new Vector2(0, -980), new Vector2(720, 130), new Color(0, 0, 0, 0), Pal.Pink, "QUIT TO MENU", 44, "home", Pal.Pink); quit.onClick = OnQuit; Mark("quit", quit.rectTransform);
             items.Add(resume.rectTransform); items.Add(restart.rectTransform); items.Add(settings.rectTransform); items.Add(quit.rectTransform);
@@ -193,14 +237,16 @@ namespace Lab07
 
         void OnQuit()
         {
-            if (quitArm > 0) { quitArm = 0; Time.timeScale = 1f; nav.GoRoot(Scr.Main); return; }
+            if (quitArm > 0) { quitArm = 0; Time.timeScale = 1f; AudioListener.pause = false; nav.GoRoot(Scr.Main); return; }
             quitArm = 3f; quit.SetLabel("TAP AGAIN - PROGRESS LOST"); quit.label.fontSize = 36; quit.bg.color = Pal.Pink; quit.label.color = Pal.Ink; if (quit.icon) quit.icon.color = Pal.Ink; Tw.Shake(quit.rectTransform, 12, .3f);             Tw.To(k => { }, 3f, Ease.Linear, 0f, ResetQuit, (this, "quitArm"));
         }
         void ResetQuit() { quitArm = 0; quit.SetLabel("QUIT TO MENU"); quit.label.fontSize = 44; quit.bg.color = new Color(0, 0, 0, 0); quit.label.color = Pal.Pink; if (quit.icon) quit.icon.color = Pal.Pink; }
 
         public override void OnShow(bool returning)
         {
-            Time.timeScale = 0f; ResetQuit(); Tw.Kill((this, "quitArm"));
+            Time.timeScale = 0f; AudioListener.pause = true;
+            if (!returning) GameAudio.UI(UiCue.Pause);
+            ResetQuit(); Tw.Kill((this, "quitArm"));
             var hud = nav.Peek(Scr.Hud) as HudScreen; sub.text = GS.Session.Title; scoreChip.text = hud != null ? hud.Score.ToString("N0") : "0"; coinChip.text = hud != null ? "+" + hud.CoinsGot : "+0";
             // modal motion: dim fades (OutQuad), card scales in with overshoot (OutBack) - signals "layer on top"
             Tw.AlphaFrom(UI.Group(Root), 0, 1, .12f);
@@ -212,7 +258,7 @@ namespace Lab07
         public override void PlayOut(Action done)
         {
             Tw.To(k => dim.color = Pal.A(Pal.Ink, .76f * (1 - k)), .2f, Ease.InQuad, 0f, null, (this, "dim"));
-            Tw.Scale(card, .88f, .2f, Ease.InBack); Tw.Alpha(UI.Group(card), 0, .18f, Ease.InQuad, 0f, () => { Time.timeScale = 1f; done?.Invoke(); });
+            Tw.Scale(card, .88f, .2f, Ease.InBack); Tw.Alpha(UI.Group(card), 0, .18f, Ease.InQuad, 0f, () => { Time.timeScale = 1f; AudioListener.pause = false; GameAudio.UI(UiCue.Resume); done?.Invoke(); });
         }
     }
 
@@ -268,8 +314,8 @@ namespace Lab07
             primary.SetLabel(win ? (hasNext ? "NEXT LEVEL" : "PLAY AGAIN") : "TRY AGAIN");
             primary.icon.sprite = Sprites.Icon(win && hasNext ? "next" : "restart");
             float pw = primary.label.GetPreferredValues(primary.label.text).x; primary.label.rectTransform.anchoredPosition = new Vector2(36, 0); primary.icon.rectTransform.anchoredPosition = new Vector2(-pw / 2 - 20, 0);
-            primary.onClick = () => { if (hasNext) GS.Session.Level++; nav.Replace(Scr.Hud, Trans.Fade); };
-            if (win) { left.SetLabel("RETRY"); left.icon.sprite = Sprites.Icon("restart"); left.onClick = () => nav.Replace(Scr.Hud, Trans.Fade); }
+            primary.onClick = () => { if (hasNext) GS.Session.Level++; App.I.flight.Begin(replace: true); };
+            if (win) { left.SetLabel("RETRY"); left.icon.sprite = Sprites.Icon("restart"); left.onClick = () => App.I.flight.Begin(replace: true); }
             else { left.SetLabel("SHOP"); left.icon.sprite = Sprites.Icon("bag"); left.onClick = () => nav.Push(Scr.Shop); }
             float lw = left.label.GetPreferredValues(left.label.text).x; left.label.rectTransform.anchoredPosition = new Vector2(30, 0); left.icon.rectTransform.anchoredPosition = new Vector2(-lw / 2 - 12, 0);
 
@@ -296,13 +342,13 @@ namespace Lab07
 
         static readonly string[] lines =
         {
-            "#NOVA RUSH", "A mobile menu-system prototype", "",
+            "#NOVA RUSH", "A portrait space arcade game", "",
             "@DESIGN & CODE", "BSSE23018 · Muhammad Tayyab", "",
-            "@COURSE", "ITU CS-464 Game Development", "Lab 07 · Mobile UI/UX", "",
+            "@COURSE", "ITU CS-464 Game Development", "Lab 08 · Audio & Feedback", "",
             "@VISUAL REFERENCES", "Layered card menus, one big PLAY button:", "Subway Surfers", "Neon-on-dark arcade palette:", "Geometry Dash", "Star-rating results flow:", "Angry Birds · Cut the Rope", "(inspiration only - no assets used)", "",
             "@TECH", "Unity 6000.3.24f1", "uGUI · TextMeshPro", "Own tween engine with ease curves", "",
             "@TYPEFACE", "Liberation Sans (SIL OFL 1.1)", "via TextMeshPro", "",
-            "@ART & AUDIO", "Every icon, shape and sound is", "generated in code.", "No third-party or AI-generated images.", "",
+            "@ART & AUDIO", "Every icon, shape and sound is", "generated in code.", "Audio synthesis: tools/make_audio.py (CC0).", "",
             "@ASSISTANCE", "Code written with Claude Code (Anthropic)", "",
             "#THANKS FOR PLAYING",
         };

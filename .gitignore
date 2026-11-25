@@ -127,3 +127,6 @@ InitTestScene*.unity*
 *.mp4
 !lab7_recording.mp4
 UpgradeLog*.htm
+
+# Lab 07/08 local capture output
+/Capture/
