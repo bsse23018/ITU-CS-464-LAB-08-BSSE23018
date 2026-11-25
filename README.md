@@ -1,65 +1,56 @@
-# Tayyab RUSH - Lab 07 Mobile Menu System (ITU CS-464)
+# Tayyab RUSH · ITU CS-464 Lab 08
 
-Unity **6000.3.24f1**, uGUI + TextMeshPro. Portrait 1080x1920 canvas, anchored layout, safe-area aware.
-Run: open the project, open `Assets/Lab07/Scenes/Menu.unity`, press Play (Game view: portrait / 1080x1920).
-## Demo Video
-- [Watch / Download Demo Video (lab7_recording.mp4)](lab7_recording.mp4)
+**BSSE23018 · Unity 6000.3.24f1 · portrait uGUI and TextMesh Pro**
 
-<video src="lab7_recording.mp4" width="360" controls></video>
+Lab 08 extends the [Lab 07 mobile menu project](https://github.com/bsse23018/-ITU-CS-464-LAB-07-bsse23018) from its published history. Title, Main Menu, Mode Select, Level Select, Hangar, Shop, Settings, Pause, Results, and Credits keep their original roles and portrait UI. The flight HUD keeps the ship, drag controls, countdown, and hazards from Lab 07.
 
-## Screens and flow
-Title -> Main Menu -> Mode Select -> Level Select -> (short play) -> Pause / Results.
-Main Menu also opens Hangar (loadout), Shop, Settings, Credits. Every screen has a Back button (top-left) or a Home/Resume button.
+## Run
 
-| # | Screen | Purpose | Tweens / ease |
-|---|--------|---------|---------------|
-| 1 | Title | Logo, loading bar, tap to start | Logo OutBack; loading bar InOutQuad; start-button halo OutQuad loop |
-| 2 | Main Menu | Hub: Play, Hangar, Shop, Settings | Staggered rise OutCubic; PLAY halo loop; press scale OutQuad/OutBack |
-| 3 | Mode Select | Campaign / Endless / Time Attack / locked | Cards slide in OutCubic; locked card shake |
-| 4 | Level Select | 12 levels, stars, locks | Nodes pop OutBack; selection ring OutBack |
-| 5 | Hangar | Ship carousel, stats, boost slot | Ship swap InQuad out / OutCubic in; stat bars OutCubic |
-| 6 | Shop | Tabs, buy items, coin counter | Tab slide InQuad/OutCubic; purchase OutElastic; coin count OutQuart |
-| 7 | Settings | Sensitivity, shake, quality, reset | Toggle knob OutCubic; segment pill OutBack |
-| 8 | Pause | Modal over gameplay | Dim fade OutQuad; card OutBack in / InBack out |
-| 9 | Results | Stars, score, next / retry / home | Banner OutBounce; stars OutElastic; score OutQuart |
-| 10 | Credits | Auto-scrolling credits | Linear scroll |
+1. Clone the repository and add its root folder as a project in Unity Hub. Open it with Unity **6000.3.24f1** and let Unity finish importing.
+2. Open `Assets/Lab07/Scenes/Menu.unity`, set the Game view to **9:16**, and press Play. Keep both **Menu** and **Flight** enabled in Build Profiles, with Menu first.
+3. Tap to start, then choose **Play → Campaign → an unlocked level**. Drag across the flight field to move. In the Editor, the arrow keys or A/D also steer. Collect coins, dodge space debris, and survive the sector timer. Endless runs until the ship is lost. Time Attack adds a longer timed run.
+4. Open **Pause → Settings** during a flight to hear volume changes without advancing the run. Results supports replay, the next campaign level when available, or a return to the main menu.
 
-Design notes (applied on every screen): one primary button per screen (cyan, largest), secondary buttons smaller on a panel colour,
-text >= 36 px, touch targets >= 120 px, 40 px side margins, same header (Back left, title, coins right), state shown by colour + icon/label
-(lock icon, check mark, ON/OFF text, filled vs outline stars) so it still reads in greyscale.
+For an Android build, install Android Build Support, SDK, NDK and OpenJDK through Unity Hub, then use **Lab07 → Build Android APK** or build through Unity’s Build Profiles.
 
-## 📱 Mobile Build (Android APK)
-- **Direct Download**: [Download TayyabRush.apk](Builds/TayyabRush.apk)
-- **One-Click Unity Build**: In the Unity Editor, click **`Lab07 > Build Android APK`** from the top menu to generate `Builds/TayyabRush.apk`.
+## Loading and audio
 
----
+`FlightFlow` displays a blocking loading overlay before calling `SceneManager.LoadSceneAsync` in additive mode. It reports Unity’s actual loading progress against the 0.9 ready threshold. The overlay briefly shows 100%, then allows activation and waits for the operation to finish before opening the HUD. Replay reloads the Flight scene. The menu camera, UI navigation, and audio player remain available throughout.
 
-## Screenshots
+[Audio Mixer screenshot](Docs/audio-mixer.png)
 
-### Main Menu
-![Main Menu](Docs/screens/01-main-menu.png)
+| Mixer group | Signal |
+| --- | --- |
+| Master | Combined output from all three child groups |
+| Music | Menu and flight loops |
+| SFX | Flight launch, coin pickup, shield break, damage, and results |
+| UI | Hover, taps, back, panel transitions, pause/resume, and toast feedback |
 
-### Mode Select
-![Mode Select](Docs/screens/02-mode-select.png)
+`GameAudio` routes two music sources and shared UI/SFX voice pools through `MainMixer`. Short sounds use `PlayOneShot`; coin and damage cues vary by up to ±4.5% in pitch. Menu music crossfades into the faster flight loop when the countdown ends. It crossfades back on results or return to menu. Music and UI remain audible while paused; the gameplay effects pool follows `AudioListener.pause`.
 
-### Level Select
-![Level Select](Docs/screens/03-level-select.png)
+Each slider writes its exposed mixer parameter using `20 × log10(clamp(value, 0.0001, 1))`. This maps 100% to 0 dB, 50% to about −6 dB, and 0% to the mixer’s −80 dB floor. The four slider values are independently stored in `PlayerPrefs` and restored on startup.
 
-### Hangar
-![Hangar](Docs/screens/04-hangar.png)
+## C# events and feedback
 
-### Shop - Boosts
-![Shop - Boosts](Docs/screens/05-shop-boosts.png)
+`FlightSession` owns the run’s score, hearts, shield, and outcome. It raises `Launched`, `Collected`, `Damaged`, `ShieldBroken`, and `Finished`. Three independent components subscribe while the HUD is enabled.
 
-### Shop - Skins
-![Shop - Skins](Docs/screens/06-shop-skins.png)
+| Listener | Response |
+| --- | --- |
+| `FlightHudFeedback` | Updates and animates score, hearts, and shield indicator |
+| `FlightAudioFeedback` | Plays the relevant cue and handles music transitions |
+| `FlightVisualFeedback` | Emits UI sparks, hit flash, and optional shake |
 
-### Shop - Coins
-![Shop - Coins](Docs/screens/07-shop-coins.png)
+[Publisher and listener excerpt](Docs/events.md)
 
-### Settings
-![Settings](Docs/screens/08-settings.png)
+## Demo
 
-### Gameplay
-![Gameplay](Docs/screens/09-gameplay.png)
+[Watch Lab 08 gameplay and restart](Docs/lab08-demo.mp4)
 
+The demo is captured in Unity from the live game and mixer output. Its final segment opens a new Play session and checks the four restored slider values.
+
+## Credits
+
+- **Audio** · The 17 WAV files under `Assets/Resources/Lab08Audio` are original synthetic effects and loops generated by [tools/make_audio.py](tools/make_audio.py). They are available under [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/). No third-party audio samples are used.
+- **Typeface** · Liberation Sans, distributed with TextMesh Pro, under [SIL Open Font License 1.1](Assets/TextMesh%20Pro/Fonts/LiberationSans%20-%20OFL.txt).
+- **Included TMP sample sprite sheet** · EmojiOne, © EmojiOne Inc., with credit in the [sprite attribution file](Assets/TextMesh%20Pro/Sprites/EmojiOne%20Attribution.txt). The screens use the Lab 07 procedurally drawn shapes, icons, and ship artwork.
+- **Course references** · CS464 Lecture 08 informed the menu and colour conventions, Lecture 09 informed audio routing and event-driven feedback, and Lecture 10 provided level and sound-design context.
